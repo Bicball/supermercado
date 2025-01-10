@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supermercado/data/categories.dart';
-import 'package:supermercado/models/category.dart';
 import 'dart:convert';
 import 'package:supermercado/models/grocery_item.dart';
 import '../widgets/new_item.dart';
@@ -15,6 +14,8 @@ class GroceryList extends StatefulWidget {
 
 class _GroceryListState extends State<GroceryList> {
   List<GroceryItem> _groceryItems = [];
+  var _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -26,12 +27,18 @@ class _GroceryListState extends State<GroceryList> {
     final url = Uri.https('bicdev-flutter-market-default-rtdb.firebaseio.com', 'shopping-list.json');
     final response = await http.get(url);
 
+    if (response.statusCode >= 400){
+      setState(() {
+        _error = "Falha da obtenção de dados!";
+      });
+    }
+
     final Map<String, dynamic> listData = json.decode(response.body);
-    final List<GroceryItem> _loadedItems = [];
+    final List<GroceryItem> loadedItems = [];
 
     for(final item in listData.entries){
       final category = categories.entries.firstWhere((catItem) => catItem.value.title == item.value['category']).value;
-      _loadedItems.add(GroceryItem(
+      loadedItems.add(GroceryItem(
           id: item.key,
           name: item.value['name'],
           quantity: item.value['quantity'],
@@ -39,21 +46,59 @@ class _GroceryListState extends State<GroceryList> {
       ),);
     }
     setState(() {
-      _groceryItems = _loadedItems;
+      _groceryItems = loadedItems;
+      _isLoading = false;
     });
   }
 
   void _addItem() async{
-    await Navigator.of(context).push<GroceryItem>(
+    final newItem = await Navigator.of(context).push<GroceryItem>(
       MaterialPageRoute(builder: (ctx) => const NewItem()),
     );
+
+    if (newItem == null){
+      return;
+    }
+
+    setState(() {
+      _groceryItems.add(newItem);
+    });
 
     _loadItems();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+
+    Widget content = const Center(child: Text('No items added yet.'));
+
+    if(_isLoading){
+      content = const Center(child: CircularProgressIndicator(),);
+    }
+
+    if(_groceryItems.isNotEmpty) {
+      content = ListView.builder(
+        itemCount: _groceryItems.length,
+        itemBuilder: (ctx, index) =>
+            ListTile(
+              title: Text(_groceryItems[index].name),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: _groceryItems[index].category.color,
+              ),
+              trailing: Text(
+                _groceryItems[index].quantity.toString(),
+              ),
+            ),
+      );
+    }
+
+    if(_error != null){
+      content = Center(child: Text(_error!));
+    }
+
+      return Scaffold(
       appBar: AppBar(
         title: const Text('Sua Lista'),
         actions: [
@@ -63,20 +108,7 @@ class _GroceryListState extends State<GroceryList> {
           )
         ],
       ),
-      body: ListView.builder(
-        itemCount: _groceryItems.length,
-        itemBuilder: (ctx, index) => ListTile(
-          title: Text(_groceryItems[index].name),
-          leading: Container(
-            width: 24,
-            height: 24,
-            color: _groceryItems[index].category.color,
-          ),
-          trailing: Text(
-            _groceryItems[index].quantity.toString(),
-          ),
-        ),
-      ),
+      body: content
     );
   }
 }
